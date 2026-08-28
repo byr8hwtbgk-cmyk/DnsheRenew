@@ -1,0 +1,26 @@
+name: Monthly DNSHE Renew
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 0 1 * *"
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    environment:
+      name: dnshe
+
+    steps:
+      - name: Renew DNSHE domains
+        id: renew
+        uses: nhirsama/DnsheRenew@v0.1
+        with:
+          api-keys: ${{ secrets.DNSHE_API_KEYS }}
+          api-secrets: ${{ secrets.DNSHE_API_SECRETS }}
+
+      - name: Print result
+        if: ${{ always() }}
+        run: |
+          echo "success=${{ steps.renew.outputs.success }}"
+          echo "renewed-total=${{ steps.renew.outputs.renewed-total }}"
