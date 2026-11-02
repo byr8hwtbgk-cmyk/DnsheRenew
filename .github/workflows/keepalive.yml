@@ -1,0 +1,57 @@
+name: Keepalive
+
+# ------------------------------------------------------------------
+# 为什么需要这个工作流：
+#
+# GitHub 的规则 —— 在公开仓库中，如果 60 天内没有任何仓库活动
+# （提交/推送等），所有 schedule 触发的定时工作流会被自动禁用。
+#
+# 关键陷阱：工作流自己的定时运行 *不算* 仓库活动。
+# 所以 dnshe-renew.yml 越准时地每月跑一次，越会在第 60 天被关掉，
+# 而且不会有任何失败告警 —— 只是某天起定时就不响了。
+#
+# 本工作流每周产生一次微小提交（只写 .github/keepalive.txt），
+# 用来重置这个 60 天倒计时，让 dnshe-renew.yml 的月度续期永久存活。
+#
+# 注意：这里显式声明 contents: write，因为新仓库的
+# GITHUB_TOKEN 默认是 read-only，否则 git push 会失败。
+# ------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"   # 每周一 03:00 UTC = 北京时间周一 11:00
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Write heartbeat timestamp
+        run: |
+          mkdir -p .github
+          printf 'last heartbeat: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .github/keepalive.txt
+          cat .github/keepalive.txt
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/keepalive.txt
+          if git diff --staged --quiet; then
+            echo "No change, nothing to commit."
+          else
+            git commit -m "chore: keepalive heartbeat [skip ci]"
+            git push
+          fi
